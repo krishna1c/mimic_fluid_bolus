@@ -1,0 +1,271 @@
+---
+title: "HST953"
+author: "J.D. Raffa"
+date: "November 21, 2017"
+output: html_document
+---
+
+## Load the orginal data from the database
+```{r}
+library(plyr)
+library(Hmisc)
+library(dplyr)
+bolus_defination_tbl <- read.csv("/Users/yinkanhua/Desktop/Harvard/!!!Fall courses/HST 953/Project/eICU_dataanalysis_1121/Bolus_screening_final_171114.csv")
+
+vitals_tbl <- read.csv("/Users/yinkanhua/Desktop/Harvard/!!!Fall courses/HST 953/Project/eICU_dataanalysis_1121/systemicmean.csv")
+
+vitals_tbl_2 <- read.csv("/Users/yinkanhua/Desktop/Harvard/!!!Fall courses/HST 953/Project/eICU_dataanalysis_1121/vitalAperiodic.csv")
+
+intake_tbl <- read.csv("/Users/yinkanhua/Desktop/Harvard/!!!Fall courses/HST 953/Project/eICU_dataanalysis_1121/intake.csv")
+
+patient_tbl <- read.csv("/Users/yinkanhua/Desktop/Harvard/!!!Fall courses/HST 953/Project/eICU_dataanalysis_1121/patient.csv")
+
+apachepredvar_tbl <- read.csv("/Users/yinkanhua/Desktop/Harvard/!!!Fall courses/HST 953/Project/eICU_dataanalysis_1121/apachePredVar.csv")
+
+apachepatientresult_tbl <- read.csv("/Users/yinkanhua/Desktop/Harvard/!!!Fall courses/HST 953/Project/eICU_dataanalysis_1121/apachePatientResult.csv")
+
+apacheapsvar_tbl <- read.csv("/Users/yinkanhua/Desktop/Harvard/!!!Fall courses/HST 953/Project/eICU_dataanalysis_1121/apacheApsVar.csv")
+
+```
+
+
+## Define the bolus (not perfect at all)
+```{r}
+bolus_onetimeonly <- intake_tbl %>% 
+  inner_join(bolus_defination_tbl,by="cellpath",copy=TRUE) %>% 
+  filter(cellvaluenumeric>=500) %>% 
+  filter(intakeoutputoffset <= 1440 & intakeoutputoffset >= 0) %>%
+  group_by(patientunitstayid) %>% 
+  arrange(intakeoutputoffset) %>%
+  slice(1)
+```
+
+## Innerjoin with the vital table (periodic)
+```{r}
+bloodpressure_p <- bolus_onetimeonly %>% select(patientunitstayid, cellvaluenumeric, intakeoutputoffset) %>%
+  inner_join(vitals_tbl, by="patientunitstayid", copy=TRUE) %>%  select(patientunitstayid, cellvaluenumeric, intakeoutputoffset, observationoffset, systemicmean)
+```
+
+## Innerjoin with the vital table (aperiodic)
+```{r}
+bloodpressure_ap <- bolus_onetimeonly %>% select(patientunitstayid, cellvaluenumeric, intakeoutputoffset) %>%
+  inner_join(vitals_tbl_2, by="patientunitstayid", copy=TRUE) %>% select(patientunitstayid, cellvaluenumeric, intakeoutputoffset, observationoffset, noninvasivemean)
+```
+
+## Define hypotension patients (periodic)
+```{r}
+hypoTN_p <- 
+  bloodpressure_p %>%
+  group_by(patientunitstayid) %>%
+  filter ((intakeoutputoffset - observationoffset <=60) & (intakeoutputoffset - observationoffset > 0)) %>%  
+  dplyr::summarise (prebp_p = min (systemicmean)) %>%
+  mutate (hypoTN_p = (ifelse(prebp_p <60,1, 0))) %>%
+  filter(hypoTN_p==1)  %>% select(patientunitstayid, prebp_p)
+``` 
+
+## Define hypotension patients (aperiodic)
+```{r}
+hypoTN_ap <- 
+  bloodpressure_ap %>% 
+  group_by(patientunitstayid) %>% 
+  filter ((intakeoutputoffset - observationoffset <=60) & (intakeoutputoffset - observationoffset > 0)) %>%
+  dplyr::summarise (prebp_ap = min (noninvasivemean)) %>%
+  mutate (hypoTN_ap = (ifelse(prebp_ap <60,1, 0))) %>%
+  filter(hypoTN_ap==1) %>% 
+  select(patientunitstayid, prebp_ap)
+```
+
+
+## Define good response vs bad response patients (periodic) Not perfect at all!
+```{r}
+Response_p <- bloodpressure_p %>% group_by(patientunitstayid) %>% filter ((observationoffset - intakeoutputoffset <=60) & (observationoffset - intakeoutputoffset > 0)) %>% dplyr::summarise (postbp_p = max (systemicmean)) %>% mutate (response_1 = (ifelse(postbp_p >65,1, 0))) %>% inner_join(hypoTN_p, by="patientunitstayid", copy=TRUE)
+```
+
+## Define good response vs bad response patients (aperiodic) Not perfect at all!
+```{r}
+Response_ap <- bloodpressure_ap %>% group_by(patientunitstayid) %>% filter ((observationoffset - intakeoutputoffset <=60) & (observationoffset - intakeoutputoffset > 0)) %>% dplyr::summarise (postbp_ap = max (noninvasivemean)) %>% mutate (response_2 = (ifelse(postbp_ap >65,1, 0))) %>% inner_join(hypoTN_ap, by="patientunitstayid", copy=TRUE)
+```
+
+
+## Combine aperiodic and periodic 
+```{r}
+Response_all <- full_join(Response_p, Response_ap, by="patientunitstayid") 
+Response_all <- Response_all %>% select(patientunitstayid, prebp_p, postbp_p, prebp_ap, postbp_ap) %>% group_by(patientunitstayid) %>% dplyr::mutate(prebp_final = min (c(prebp_p, prebp_ap), na.rm = T), postbp_final = max (c(postbp_p, postbp_ap), na.rm = T)) %>% filter(is.finite(postbp_final)) %>% dplyr::mutate (response = ifelse (postbp_final >65, 1, 0)) %>% select(patientunitstayid, prebp_final, postbp_final, response)
+```
+
+## Innerjoine with 1st APACHE table
+```{r}
+withapache1 <- Response_all %>% inner_join(apacheapsvar_tbl, by="patientunitstayid", copy=TRUE) %>% select(patientunitstayid, prebp_final, postbp_final, response, vent)
+```
+
+## Innerjoine with 2nd APACHE table
+```{r}
+withapache1_2 <- withapache1 %>% inner_join(apachepredvar_tbl, by="patientunitstayid", copy=TRUE) %>% select(patientunitstayid, prebp_final, postbp_final, response, vent, gender, age, cirrhosis, hepaticfailure, aids, metastaticcancer, diedinhospital)
+```
+
+## Innerjoine with 3rd APACHE table
+```{r}
+withapache1_2_3 <- withapache1_2 %>% inner_join(apachepatientresult_tbl%>%filter(apacheversion == "IVa"), by="patientunitstayid", copy=TRUE) %>% select(patientunitstayid, prebp_final, postbp_final, response, vent, gender, age, cirrhosis, hepaticfailure, aids, metastaticcancer, diedinhospital, apachescore, preopmi)
+```
+
+## Combine the above three to one 
+```{r}
+puttogether <- withapache1_2_3 %>% inner_join(bolus_onetimeonly, by="patientunitstayid", copy=TRUE) %>% select(patientunitstayid, cellvaluenumeric, prebp_final, postbp_final, vent, gender, age, cirrhosis, hepaticfailure, aids, metastaticcancer, diedinhospital, apachescore, preopmi)
+```
+
+## Define the response 
+```{r}
+puttogether1 <- puttogether %>% mutate(response = ifelse (postbp_final > 65, 1, 0))
+```
+
+
+```{r}
+dput(names(puttogether1))
+```
+
+## Table 1
+
+```{r}
+library(tableone)
+## Vector of variables to summarize
+myVars <- c("cellvaluenumeric", "prebp_final", "postbp_final", 
+"vent", "gender", "age", "cirrhosis", "hepaticfailure", "aids", 
+"metastaticcancer", "diedinhospital", "apachescore", "preopmi", 
+"response")
+
+## Vector of categorical variables that need transformation
+catVars <- c("vent", "gender","cirrhosis", "hepaticfailure", "aids", 
+"metastaticcancer", "diedinhospital", "preopmi", 
+"response")
+
+## Create a TableOne object
+tab2 <- CreateTableOne(vars = myVars, data = puttogether1, factorVars = catVars)
+tab2
+```
+
+```{r}
+tab3 <- CreateTableOne(vars = myVars, strata = "response" , data = puttogether1, factorVars = catVars)
+tab3
+```
+
+## Divided into the training and test set
+
+```{r}
+library(caret)
+set.seed(100)
+train_set <- puttogether %>%ungroup() %>% sample_frac(0.7)
+test_set <- puttogether %>% filter(!(patientunitstayid %in% train_set$patientunitstayid))
+```
+
+## Generalized linear model
+
+```{r}
+train.glm <- train(as.factor(postbp_final>65) ~   ., data=train_set %>% ungroup() %>% select(-patientunitstayid,-diedinhospital,-age),trControl=trainControl(method="cv",num=5),method="glm", family="binomial")
+```
+
+```{r}
+train.glm
+```
+
+```{r}
+plot(varImp(train.glm))
+```
+
+```{r}
+train_set$logRegPred <- predict(train.glm, newdata=train_set,type="prob")[,2]
+test_set$logRegPred <- predict(train.glm, newdata=test_set,type="prob")[,2]
+
+library(ROCR)
+predTr <- prediction(train_set$logRegPred,as.factor(train_set$postbp_final>65))
+perfTr <- performance(predTr,"tpr","fpr")
+plot(perfTr)
+text(0.6,0.2,paste0("AUC: ", round(performance(predTr,"auc")@y.values[[1]],3)))
+
+predTe <- prediction(test_set$logRegPred,as.factor(test_set$postbp_final>65))
+perfTe <- performance(predTe,"tpr","fpr")
+lines(perfTe@x.values[[1]],perfTe@y.values[[1]],col='red')
+text(0.6,0.1,paste0("AUC: ", round(performance(predTe,"auc")@y.values[[1]],3)),col='red')
+
+```
+
+
+## Gradient boosting
+
+```{r}
+train.gbm <- train(as.factor(postbp_final>65) ~  .,data=train_set %>% ungroup() %>% select(-patientunitstayid,-diedinhospital,-age) %>% mutate(postbp_final2=(postbp_final>65)) %>% select(-postbp_final2),trControl=trainControl(method="cv",num=5),method="gbm",tuneLength=5)
+
+```
+
+```{r}
+plot(train.gbm)
+```
+
+```{r}
+plot(varImp(train.gbm))
+```
+```{r}
+print(train.gbm)
+```
+
+
+
+```{r}
+library(pROC)
+plot (with(train_set %>% ungroup() %>% select(-patientunitstayid,-diedinhospital,-age) %>% mutate(postbp_final2=(postbp_final>65)) ,roc(postbp_final2,predict(train.gbm,train_set %>% ungroup() %>% select(-patientunitstayid,-diedinhospital,-age) %>% mutate(postbp_final2=(postbp_final>65)),type="prob")[,2])))
+
+plot(with(test_set %>% ungroup() %>% select(-patientunitstayid,-diedinhospital,-age) %>% mutate(postbp_final2=(postbp_final>65)) ,roc(postbp_final2,predict(train.gbm,test_set %>% ungroup() %>% select(-patientunitstayid,-diedinhospital,-age) %>% mutate(postbp_final2=(postbp_final>65)),type="prob")[,2])))
+
+```
+
+```{r}
+train_set$logRegPred2 <- predict(train.gbm, newdata=train_set,type="prob")[,2]
+test_set$logRegPred2 <- predict(train.gbm, newdata=test_set,type="prob")[,2]
+
+library(ROCR)
+predTr2 <- prediction(train_set$logRegPred2,as.factor(train_set$postbp_final>65))
+perfTr2 <- performance(predTr2,"tpr","fpr")
+plot(perfTr2)
+text(0.6,0.2,paste0("AUC: ", round(performance(predTr2,"auc")@y.values[[1]],3)))
+
+predTe2 <- prediction(test_set$logRegPred2,as.factor(test_set$postbp_final>65))
+perfTe2 <- performance(predTe2,"tpr","fpr")
+lines(perfTe2@x.values[[1]],perfTe2@y.values[[1]],col='red')
+text(0.6,0.1,paste0("AUC: ", round(performance(predTe2,"auc")@y.values[[1]],3)),col='red')
+```
+
+
+## Random forest
+
+
+```{r}
+train.rf<- train(as.factor(postbp_final>65) ~  .,data=train_set %>% ungroup() %>% select(-patientunitstayid,-diedinhospital,-age) %>% mutate(postbp_final2=(postbp_final>65)) %>% select(-postbp_final2),trControl=trainControl(method="cv",num=5),method="rf",importance=TRUE)
+```
+
+```{r}
+print(train.rf )
+```
+
+```{r}
+plot(train.rf)
+```
+
+```{r}
+plot(varImp(train.rf))
+```
+
+
+```{r}
+train_set$logRegPred3 <- predict(train.rf, newdata=train_set,type="prob")[,2]
+test_set$logRegPred3 <- predict(train.rf, newdata=test_set,type="prob")[,2]
+
+library(ROCR)
+predTr3 <- prediction(train_set$logRegPred3,as.factor(train_set$postbp_final>65))
+perfTr3 <- performance(predTr3,"tpr","fpr")
+plot(perfTr3)
+text(0.6,0.2,paste0("AUC: ", round(performance(predTr3,"auc")@y.values[[1]],3)))
+
+predTe3 <- prediction(test_set$logRegPred3,as.factor(test_set$postbp_final>65))
+perfTe3 <- performance(predTe3,"tpr","fpr")
+lines(perfTe3@x.values[[1]],perfTe3@y.values[[1]],col='red')
+text(0.6,0.1,paste0("AUC: ", round(performance(predTe3,"auc")@y.values[[1]],3)),col='red')
+```
