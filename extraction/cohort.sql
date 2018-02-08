@@ -10,8 +10,8 @@ DROP MATERIALIZED VIEW IF EXISTS cohort CASCADE;
 
 CREATE MATERIALIZED VIEW cohort AS(
 
-
-    WITH basic AS(
+    -- First icustay adults
+    WITH base AS(
         SELECT
             icustay_id, subject_id, hadm_id, gender
             , CASE WHEN ethnicity IN ('ASIAN', 'ASIAN - ASIAN INDIAN',
@@ -40,17 +40,17 @@ CREATE MATERIALIZED VIEW cohort AS(
                                       'AMERICAN INDIAN/ALASKA NATIVE FEDERALLY RECOGNIZED TRIBE',
                                       'MIDDLE EASTERN', 'MULTI RACE ETHNICITY',
                                       'NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER',
-                                      'OTHER', 'PATIENT DECLINED TO ANSWER',
-                                      'UNABLE TO OBTAIN', 'UNKNOWN/NOT SPECIFIED')
-                       THEN 'Other'
+                                      'OTHER') THEN 'Other'
 
+                   WHEN ethnicity IN ('PATIENT DECLINED TO ANSWER', 'UNABLE TO OBTAIN',
+                                      'UNKNOWN/NOT SPECIFIED') THEN 'Unknown'
 
                    WHEN ethnicity IN ('WHITE', 'WHITE - BRAZILIAN',
                                       'WHITE - EASTERN EUROPEAN',
                                       'WHITE - OTHER EUROPEAN', 'WHITE - RUSSIAN')
-                       THEN 'White'
-              END AS ethnicity
-            ,intime, outtime, los_icu, dod, hospital_expire_flag
+                     THEN 'White'
+            END AS ethnicity_group
+            , intime, outtime, los_icu, dod, hospital_expire_flag
         FROM icustay_detail
         WHERE first_icu_stay is True
         AND admission_age > 18
