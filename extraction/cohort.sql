@@ -4,7 +4,7 @@
 -- Dependencies
 \i mimic-code/icustay-detail.sql
 \i mimic-code/HeightWeightQuery.sql
-\i bolus.sql
+\i map.sql
 
 DROP MATERIALIZED VIEW IF EXISTS cohort CASCADE;
 
@@ -54,15 +54,43 @@ WITH base AS(
     FROM icustay_detail
     WHERE first_icu_stay is True
     AND admission_age >= 18
+-- Aggregate map readings (and their times) before bolus:
+-- max, min, average, last
+), pre_bolus_map AS (
+
+    SELECT
+    FROM day1_map m
+    INNER JOIN day1_bolus b
+    ON m.
+
+
+
+
+-- Aggregate map readings (and their times) after bolus:
+-- max, min, average, first? last?
+), post_bolus_map AS (
+
 )
-,
--- With bolus
 
 
--- With map < 65
-
-SELECT *
-FROM base
+-- For each day1 bolus, join the day1 maps
 
 
-);
+
+with tmp_0 as (
+  SELECT b.icustay_id, b.charttime AS bolus_time, b.bolus_volume
+         , m.charttime AS map_time, m.itemid, m.valuenum AS map_value
+  FROM day1_bolus b
+  INNER JOIN day1_map m
+  ON b.icustay_id = m.icustay_id
+  ORDER BY icustay_id, map_time desc
+)
+SELECT DISTINCT ON (icustay_id) *
+FROM tmp_0
+WHERE map_time < bolus_time
+
+
+
+
+
+-- Perhaps more logical to get max map before bolus?
