@@ -1,8 +1,4 @@
--- Crystalloid fluids
-
--- All crystalloid fluids within 48h admission
-
-
+-- Get first bolus values within 24 hours of admission
 
 -- The first bolus of the icu-stay within 24h of intime and with volume >= 1L
 DROP MATERIALIZED VIEW IF EXISTS first_bolus cascade;

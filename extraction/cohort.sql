@@ -1,10 +1,10 @@
 /* Generate cohort view. */
 
 -- Dependencies
-\i mimic-code/icustay-detail.sql
-\i mimic-code/HeightWeightQuery.sql
-\i map.sql
-\i crystalloid-fluids.sql
+-- mimic-code/icustay-detail.sql
+-- mimic-code/HeightWeightQuery.sql
+-- map.sql
+-- bolus.sql
 
 DROP MATERIALIZED VIEW IF EXISTS cohort CASCADE;
 -- Age, gender, ethnicity, first bolus time and volume, map features
