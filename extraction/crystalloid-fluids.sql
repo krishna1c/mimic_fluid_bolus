@@ -20,7 +20,7 @@ WITH bolus AS (
            , ROW_NUMBER() OVER (PARTITION BY icustay_id ORDER BY intime) row_num
     FROM bolus
     WHERE EXTRACT(EPOCH FROM (charttime - intime)) / 3600 < 24
-    AND crystalloid_bolus > 500
+    AND crystalloid_bolus > 490
 )
 -- Get first bolus for each icustay
 SELECT icustay_id, charttime, bolus_volume
