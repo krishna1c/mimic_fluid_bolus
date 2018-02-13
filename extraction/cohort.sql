@@ -1,10 +1,10 @@
-/* Generate cohort view. This is the first view to be generated, upon which all
-   other views are to be joined. */
+/* Generate cohort view. */
 
 -- Dependencies
 \i mimic-code/icustay-detail.sql
 \i mimic-code/HeightWeightQuery.sql
 \i map.sql
+\i crystalloid-fluids.sql
 
 DROP MATERIALIZED VIEW IF EXISTS cohort CASCADE;
 
@@ -54,43 +54,80 @@ WITH base AS(
     FROM icustay_detail
     WHERE first_icu_stay is True
     AND admission_age >= 18
+-- table with the first bolus time, joined to maps
+, bolus_map AS (
+    SELECT b.icustay_id, b.charttime AS bolus_time, b.bolus_volume
+           , m.charttime AS map_time, m.itemid, m.valuenum AS map_value
+    FROM first_bolus b
+    INNER JOIN day1_map m
+    ON b.icustay_id = m.icustay_id
+    ORDER BY icustay_id, map_time
 -- Aggregate map readings (and their times) before bolus:
 -- max, min, average, last
 ), pre_bolus_map AS (
-
-    SELECT
-    FROM day1_map m
-    INNER JOIN day1_bolus b
-    ON m.
-
-
-
-
--- Aggregate map readings (and their times) after bolus:
--- max, min, average, first? last?
-), post_bolus_map AS (
-
+    WITH tmp_0 as (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY icustay_id
+                                     ORDER BY map_time desc) row_num
+        FROM bolus_map
+        WHERE map_time < bolus_time
+    -- Aggregates
+    ), tmp_1 AS (
+        SELECT icustay_id, min(bolus_time), min(bolus_volume), MIN(map_value) AS min_map,
+               AVG(map_value) AS avg_map, MAX(map_value) AS max_map
+        FROM tmp_0
+    -- Need to make another table for last map
+    GROUP BY icustay_id
+    ), tmp_2 AS (
+        SELECT icustay_id, map_value as last_pre_map
+        FROM tmp_0
+        WHERE row_num = 1
+    )
+    SELECT t1.*, t2.last_pre_map
+    FROM tmp_1 t1
+    JOIN tmp_2 t2
+    ON t1.icustay_id = t1.icustay_id
 )
 
 
--- For each day1 bolus, join the day1 maps
 
 
 
-with tmp_0 as (
-  SELECT b.icustay_id, b.charttime AS bolus_time, b.bolus_volume
-         , m.charttime AS map_time, m.itemid, m.valuenum AS map_value
-  FROM day1_bolus b
-  INNER JOIN day1_map m
-  ON b.icustay_id = m.icustay_id
-  ORDER BY icustay_id, map_time desc
+
+
+
+-- table with the first bolus time, joined to maps
+with bolus_map AS (
+    SELECT b.icustay_id, b.charttime AS bolus_time, b.bolus_volume
+           , m.charttime AS map_time, m.itemid, m.valuenum AS map_value
+    FROM first_bolus b
+    INNER JOIN day1_map m
+    ON b.icustay_id = m.icustay_id
+    ORDER BY icustay_id, map_time
+-- Aggregate map readings (and their times) before bolus:
+-- max, min, average, last
+), pre_bolus_map AS (
+    WITH tmp_0 as (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY icustay_id
+                                     ORDER BY map_time desc) row_num
+        FROM bolus_map
+        WHERE map_time < bolus_time
+    -- Aggregates
+    ), tmp_1 AS (
+        SELECT icustay_id, min(bolus_time), min(bolus_volume), MIN(map_value) AS min_map,
+               AVG(map_value) AS avg_map, MAX(map_value) AS max_map
+        FROM tmp_0
+    -- Need to make another table for last map
+    GROUP BY icustay_id
+    ), tmp_2 AS (
+        SELECT icustay_id, map_value as last_pre_map
+        FROM tmp_0
+        WHERE row_num = 1
+    )
+    SELECT t1.*, t2.last_pre_map
+    FROM tmp_1 t1
+    JOIN tmp_2 t2
+    ON t1.icustay_id = t1.icustay_id
 )
-SELECT DISTINCT ON (icustay_id) *
-FROM tmp_0
-WHERE map_time < bolus_time
+select * from pre_bolus_map;
 
 
-
-
-
--- Perhaps more logical to get max map before bolus?
