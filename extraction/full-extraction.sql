@@ -18,9 +18,9 @@
 \i mimic-code/elixhauser-quan.sql
 \i mimic-code/elixhauser-score-quan.sql
 
--- Sofa score
-\i mimic-code/echo-data.sql
-\i mimic-code/sofa.sql
+-- Sofa score. So many requirements, and based on full 24h. Maybe skip?
+-- \i mimic-code/echo-data.sql
+-- \i mimic-code/sofa.sql
 
 -- Other vitals
 \i vitals.sql
@@ -32,4 +32,4 @@
 \i combine-views.sql
 
 -- Write csv
--- \i export-csv.sql
+\i export-csv.sql
