@@ -1,8 +1,18 @@
+-- Vital signs, aside from map (which is used to create the cohort)
+-- resp rate, heart rate, temperature, sp02,
+-- Within 1h prior to bolus. Adapted from vitals-first-day.sql to just use
+-- cohort with bolus times instead of icustay intimes
+
+-- Dependencies
+-- cohort.sql
+
+
+
 -- This query pivots the vital signs for the first 24 hours of a patient's stay
 -- Vital signs include heart rate, blood pressure, respiration rate, and temperature
 
-DROP MATERIALIZED VIEW IF EXISTS vitalsfirstday CASCADE;
-create materialized view vitalsfirstday as
+DROP MATERIALIZED VIEW IF EXISTS vitals CASCADE;
+create materialized view vitals as
 SELECT pvt.subject_id, pvt.hadm_id, pvt.icustay_id
 
 -- Easier names
@@ -48,10 +58,10 @@ FROM  (
       -- convert F to C
   , case when itemid in (223761,678) then (valuenum-32)/1.8 else valuenum end as valuenum
 
-  from icustays ie
+  from cohort ie
   left join chartevents ce
   on ie.subject_id = ce.subject_id and ie.hadm_id = ce.hadm_id and ie.icustay_id = ce.icustay_id
-  and ce.charttime between ie.intime and ie.intime + interval '1' day
+  and ce.charttime between ie.bolus_time - interval '1 hour' and ie.bolus_time
   -- exclude rows marked as error
   and ce.error IS DISTINCT FROM 1
   where ce.itemid in
@@ -62,55 +72,55 @@ FROM  (
 
   -- Systolic/diastolic
 
-  51, --	Arterial BP [Systolic]
-  442, --	Manual BP [Systolic]
-  455, --	NBP [Systolic]
-  6701, --	Arterial BP #2 [Systolic]
-  220179, --	Non Invasive Blood Pressure systolic
-  220050, --	Arterial Blood Pressure systolic
+  51, --    Arterial BP [Systolic]
+  442, --   Manual BP [Systolic]
+  455, --   NBP [Systolic]
+  6701, --  Arterial BP #2 [Systolic]
+  220179, --    Non Invasive Blood Pressure systolic
+  220050, --    Arterial Blood Pressure systolic
 
-  8368, --	Arterial BP [Diastolic]
-  8440, --	Manual BP [Diastolic]
-  8441, --	NBP [Diastolic]
-  8555, --	Arterial BP #2 [Diastolic]
-  220180, --	Non Invasive Blood Pressure diastolic
-  220051, --	Arterial Blood Pressure diastolic
+  8368, --  Arterial BP [Diastolic]
+  8440, --  Manual BP [Diastolic]
+  8441, --  NBP [Diastolic]
+  8555, --  Arterial BP #2 [Diastolic]
+  220180, --    Non Invasive Blood Pressure diastolic
+  220051, --    Arterial Blood Pressure diastolic
 
 
   -- MEAN ARTERIAL PRESSURE
   456, --"NBP Mean"
   52, --"Arterial BP Mean"
-  6702, --	Arterial BP Mean #2
-  443, --	Manual BP Mean(calc)
+  6702, --  Arterial BP Mean #2
+  443, --   Manual BP Mean(calc)
   220052, --"Arterial Blood Pressure mean"
   220181, --"Non Invasive Blood Pressure mean"
   225312, --"ART BP mean"
 
   -- RESPIRATORY RATE
-  618,--	Respiratory Rate
-  615,--	Resp Rate (Total)
-  220210,--	Respiratory Rate
-  224690, --	Respiratory Rate (Total)
+  618,--    Respiratory Rate
+  615,--    Resp Rate (Total)
+  220210,-- Respiratory Rate
+  224690, --    Respiratory Rate (Total)
 
 
   -- SPO2, peripheral
   646, 220277,
 
   -- GLUCOSE, both lab and fingerstick
-  807,--	Fingerstick Glucose
-  811,--	Glucose (70-105)
-  1529,--	Glucose
-  3745,--	BloodGlucose
-  3744,--	Blood Glucose
-  225664,--	Glucose finger stick
-  220621,--	Glucose (serum)
-  226537,--	Glucose (whole blood)
+  807,--    Fingerstick Glucose
+  811,--    Glucose (70-105)
+  1529,--   Glucose
+  3745,--   BloodGlucose
+  3744,--   Blood Glucose
+  225664,-- Glucose finger stick
+  220621,-- Glucose (serum)
+  226537,-- Glucose (whole blood)
 
   -- TEMPERATURE
   223762, -- "Temperature Celsius"
-  676,	-- "Temperature C"
+  676,  -- "Temperature C"
   223761, -- "Temperature Fahrenheit"
-  678 --	"Temperature F"
+  678 --    "Temperature F"
 
   )
 ) pvt

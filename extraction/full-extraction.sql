@@ -8,7 +8,7 @@
 \i map.sql
 \i bolus.sql
 
--- Base cohort
+-- Base cohort (uses map and bolus)
 \i cohort.sql
 
 -- Pressors
@@ -23,10 +23,10 @@
 \i mimic-code/sofa.sql
 
 -- Other vitals
-\i mimic-code/vitals-first-day.sql
+\i vitals.sql
 
 -- Urine
-\i mimic-code/urine-output-first-day.sql
+\i urine-output.sql
 
 -- Combine all covariates into one view
 \i combine-views.sql
